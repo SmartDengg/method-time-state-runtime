@@ -20,13 +20,10 @@ public final class TimeStateLogger {
   private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
   private static final Map<String, Map<String, Stack<Invoke>>> MAP = new HashMap<>();
 
-  public static String TAG = "TimeStateLogger";
-  public static boolean debuggable = true;
+  private static String TAG;
 
   public static void entry(String encloseDescriptor, String descriptor, String className,
       String methodName, String arguments, String returnType) {
-
-    if (!debuggable) return;
 
     final String currentThread = currentThread().toString();
 
@@ -57,8 +54,6 @@ public final class TimeStateLogger {
 
   public static void exit(String encloseDescriptor, String descriptor, String lineNumber) {
 
-    if (!debuggable) return;
-
     final Invoke encloseInvoke = getInvokes(encloseDescriptor).peek();
 
     if (encloseDescriptor.equals(descriptor)) {// enclosing method stop
@@ -72,8 +67,6 @@ public final class TimeStateLogger {
   }
 
   public static void log(String encloseDescriptor) {
-
-    if (!debuggable) return;
 
     final Invoke encloseInvoke = getInvokes(encloseDescriptor).pop();
 

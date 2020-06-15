@@ -10,6 +10,7 @@ import java.lang.annotation.Target;
  * 作者: dengwei <br>
  * 描述: 计算单个函数耗时
  */
-@Retention(RetentionPolicy.CLASS) @Target({ ElementType.CONSTRUCTOR, ElementType.METHOD })
+@Retention(RetentionPolicy.CLASS)
+@Target({ElementType.CONSTRUCTOR, ElementType.METHOD})
 public @interface TimeState {
 }
