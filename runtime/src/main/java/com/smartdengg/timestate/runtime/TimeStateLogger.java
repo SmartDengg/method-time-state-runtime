@@ -17,103 +17,105 @@ import java.util.regex.Pattern;
  */
 public final class TimeStateLogger {
 
-  private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
-  private static final Map<String, Map<String, Stack<Invoke>>> MAP = new HashMap<>();
-
+  //set by compile
   private static String TAG;
 
-  public static void entry(String encloseDescriptor, String descriptor, String className,
-      String methodName, String arguments, String returnType) {
+  private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
+  private static final Map<String, Map<String, Stack<Method>>> MAP = new HashMap<>();
+
+  public static void entry(String enclosingMethodDescriptor, String descriptor,
+      String declaringClassName, String name, String arguments, String returnType) {
 
     final String currentThread = currentThread().toString();
 
-    Map<String, Stack<Invoke>> invokeMap = MAP.get(currentThread);
-    if (invokeMap == null) {
-      invokeMap = new LinkedHashMap<>();
-      MAP.put(currentThread, invokeMap);
+    Map<String, Stack<Method>> threadMethodsMap = MAP.get(currentThread);
+    if (threadMethodsMap == null) {
+      threadMethodsMap = new LinkedHashMap<>();
+      MAP.put(currentThread, threadMethodsMap);
     }
 
-    Stack<Invoke> invokeStack = invokeMap.get(encloseDescriptor);
-    if (invokeStack == null) {
-      invokeStack = new Stack<>();
-      invokeMap.put(encloseDescriptor, invokeStack);
+    Stack<Method> enclosingMethodsStack = threadMethodsMap.get(enclosingMethodDescriptor);
+    if (enclosingMethodsStack == null) {
+      enclosingMethodsStack = new Stack<>();
+      threadMethodsMap.put(enclosingMethodDescriptor, enclosingMethodsStack);
     }
 
-    if (encloseDescriptor.equals(descriptor)) { // enclosing method start
-      final Invoke encloseInvoke =
-          new Invoke(descriptor, className, methodName, arguments, returnType);
-      encloseInvoke.entry = System.nanoTime();
-      invokeStack.push(encloseInvoke);
+    if (enclosingMethodDescriptor.equals(descriptor)) { // enclosing method start
+      final Method enclosingMethod =
+          new Method(descriptor, declaringClassName, name, arguments, returnType);
+      enclosingMethod.entry = System.nanoTime();
+      enclosingMethodsStack.push(enclosingMethod);
     } else {
-      final Invoke encloseInvoke = invokeStack.peek();
-      final Invoke subInvoke = new Invoke(descriptor, className, methodName, arguments, returnType);
-      subInvoke.entry = System.nanoTime();
-      encloseInvoke.add(subInvoke.getDescriptor(), subInvoke);
+      final Method enclosingMethod = enclosingMethodsStack.peek();
+      final Method subMethod =
+          new Method(descriptor, declaringClassName, name, arguments, returnType);
+      subMethod.entry = System.nanoTime();
+      enclosingMethod.add(subMethod.getDescriptor(), subMethod);
     }
   }
 
-  public static void exit(String encloseDescriptor, String descriptor, String lineNumber) {
+  public static void exit(String enclosingMethodDescriptor, String descriptor, String lineNumber) {
 
-    final Invoke encloseInvoke = getInvokes(encloseDescriptor).peek();
+    final Method enclosingMethod = getEnclosingMethod(enclosingMethodDescriptor, false);
 
-    if (encloseDescriptor.equals(descriptor)) {// enclosing method stop
-      encloseInvoke.exit = System.nanoTime();
-      encloseInvoke.lineNumber = lineNumber;
+    if (enclosingMethodDescriptor.equals(descriptor)) {// enclosing method stop
+      enclosingMethod.exit = System.nanoTime();
+      enclosingMethod.lineNumber = lineNumber;
     } else {
-      final Invoke subInvoke = encloseInvoke.getSubInvokes().get(descriptor);
+      final Method subMethod = enclosingMethod.getSubMethods().get(descriptor);
       //noinspection ConstantConditions
-      subInvoke.exit = System.nanoTime();
+      subMethod.exit = System.nanoTime();
     }
   }
 
-  public static void log(String encloseDescriptor) {
+  public static void log(String enclosingDescriptor) {
 
-    final Invoke encloseInvoke = getInvokes(encloseDescriptor).pop();
+    final Method enclosingMethod = getEnclosingMethod(enclosingDescriptor, true);
 
     Log.d(TAG, DrawToolbox.TOP_BORDER);
 
     Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + currentThread());
 
-    final String className = encloseInvoke.getClassName();
+    final String className = enclosingMethod.getDeclaringClassName();
     String simpleClassName = className.substring(className.lastIndexOf(".") + 1);
     final Matcher matcher = ANONYMOUS_CLASS.matcher(simpleClassName);
     if (matcher.find()) simpleClassName = matcher.replaceAll("");
 
-    final String basic = className
+    final String enclosingInfo = className
         + "#"
-        + encloseInvoke.getMethodName()
+        + enclosingMethod.getName()
         + "("
-        + encloseInvoke.getArguments()
+        + enclosingMethod.getArguments()
         + ")"
-        + encloseInvoke.getReturnType()
+        + enclosingMethod.getReturnType()
         + " ("
         + simpleClassName
         + ".java:"
-        + encloseInvoke.lineNumber
+        + enclosingMethod.lineNumber
         + ")"
         + " ===> COST: "
-        + calculateTime(encloseInvoke.entry, encloseInvoke.exit);
+        + calculateTime(enclosingMethod.entry, enclosingMethod.exit);
 
-    Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + basic);
+    Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + enclosingInfo);
 
-    if (encloseInvoke.getSubInvokes().size() != 0) {
+    if (enclosingMethod.getSubMethods().size() != 0) {
       Log.d(TAG, DrawToolbox.MIDDLE_BORDER);
 
-      final Collection<Invoke> values = encloseInvoke.getSubInvokes().values();
-      for (Invoke invoke : values) {
+      final Collection<Method> methods = enclosingMethod.getSubMethods().values();
+      for (Method method : methods) {
 
-        final String log = DrawToolbox.HORIZONTAL_LINE
+        final String subInfo = DrawToolbox.HORIZONTAL_LINE
             + "  ____/ "
-            + invoke.getClassName()
+            + method.getDeclaringClassName()
             + "#"
-            + invoke.getMethodName()
+            + method.getName()
             + "("
-            + invoke.getArguments()
+            + method.getArguments()
             + ")"
-            + invoke.getReturnType()
+            + method.getReturnType()
             + " ===> COST: "
-            + calculateTime(invoke.entry, invoke.exit);
-        Log.d(TAG, log);
+            + calculateTime(method.entry, method.exit);
+        Log.d(TAG, subInfo);
       }
     }
 
@@ -121,10 +123,14 @@ public final class TimeStateLogger {
   }
 
   @SuppressWarnings("ConstantConditions")
-  private static Stack<Invoke> getInvokes(String encloseDescriptor) {
+  private static Method getEnclosingMethod(String enclosingDescriptor, boolean isPop) {
     final String currentThread = currentThread().toString();
-    final Map<String, Stack<Invoke>> invokeMap = MAP.get(currentThread);
-    return invokeMap.get(encloseDescriptor);
+    final Map<String, Stack<Method>> threadMethodsMap = MAP.get(currentThread);
+    final Stack<Method> enclosingMethodStack = threadMethodsMap.get(enclosingDescriptor);
+    if (isPop) {
+      return enclosingMethodStack.pop();
+    }
+    return enclosingMethodStack.peek();
   }
 
   private static Thread currentThread() {
