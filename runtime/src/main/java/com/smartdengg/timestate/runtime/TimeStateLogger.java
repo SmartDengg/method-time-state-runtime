@@ -86,14 +86,14 @@ public final class TimeStateLogger {
         + enclosingMethod.getName()
         + "("
         + enclosingMethod.getArguments()
-        + ")"
+        + "):"
         + enclosingMethod.getReturnType()
         + " ("
         + simpleClassName
         + ".java:"
         + enclosingMethod.lineNumber
         + ")"
-        + " ===> COST: "
+        + " ===> COST:"
         + calculateTime(enclosingMethod.entry, enclosingMethod.exit);
 
     Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + enclosingInfo);
@@ -104,17 +104,18 @@ public final class TimeStateLogger {
       final Collection<Method> methods = enclosingMethod.getSubMethods().values();
       for (Method method : methods) {
 
-        final String subInfo = DrawToolbox.HORIZONTAL_LINE
-            + "  ____/ "
-            + method.getDeclaringClassName()
-            + "#"
-            + method.getName()
-            + "("
-            + method.getArguments()
-            + ")"
-            + method.getReturnType()
-            + " ===> COST: "
-            + calculateTime(method.entry, method.exit);
+        final String subInfo =
+            DrawToolbox.HORIZONTAL_LINE
+                + "  ____/ "
+                + method.getDeclaringClassName()
+                + "#"
+                + method.getName()
+                + "("
+                + method.getArguments()
+                + "):"
+                + method.getReturnType()
+                + " ===> COST:"
+                + calculateTime(method.entry, method.exit);
         Log.d(TAG, subInfo);
       }
     }
