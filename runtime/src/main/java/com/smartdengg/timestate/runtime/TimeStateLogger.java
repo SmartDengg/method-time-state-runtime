@@ -13,15 +13,15 @@ import java.util.regex.Pattern;
 /**
  * 创建时间: 2020/03/06 22:54 <br>
  * 作者: dengwei <br>
- * 描述: 负责统计函数的进入和退出，以及函数耗时的打印等工作
+ * 描述: 记录函数的进入和退出，并打印函数的耗时
  */
 public final class TimeStateLogger {
 
-  //set by compile
-  private static String TAG;
-
   private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
   private static final Map<String, Map<String, Stack<Method>>> MAP = new HashMap<>();
+
+  //set by compile
+  private static String TAG;
 
   public static void entry(String enclosingMethodDescriptor, String descriptor,
       String declaringClassName, String name, String arguments, String returnType) {
