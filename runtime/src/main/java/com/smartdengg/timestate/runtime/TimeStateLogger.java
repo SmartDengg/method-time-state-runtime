@@ -3,7 +3,7 @@ package com.smartdengg.timestate.runtime;
 import android.util.Log;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.Map;
 import java.util.Stack;
 import java.util.concurrent.TimeUnit;
@@ -15,68 +15,58 @@ import java.util.regex.Pattern;
  * 作者: dengwei <br>
  * 描述: 记录函数的进入和退出，并打印函数的耗时
  */
+@SuppressWarnings("ConstantConditions")
 public final class TimeStateLogger {
 
   private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
-  private static final Map<String, Map<String, Stack<Method>>> MAP = new HashMap<>();
+  private static final ThreadLocal<LinkedList<Method>> threadLocal = new ThreadLocal<>();
 
   //set by compile
   private static String TAG;
 
-  public static void entry(String enclosingMethodDescriptor, String descriptor,
-      String declaringClassName, String name, String arguments, String returnType) {
+  public static void entry(boolean isEnclosing, String descriptor) {
 
-    final String currentThread = currentThread().toString();
+    final LinkedList<Method> threadMethodStack = getThreadMethodStackOrCreate();
 
-    Map<String, Stack<Method>> threadMethodsMap = MAP.get(currentThread);
-    if (threadMethodsMap == null) {
-      threadMethodsMap = new LinkedHashMap<>();
-      MAP.put(currentThread, threadMethodsMap);
-    }
+    final String[] res = descriptor.split("/");
+    final String owner = res[0];
+    final String name = res[1];
+    final String arguments = res[2];
+    final String returnType = res[3];
 
-    Stack<Method> enclosingMethodsStack = threadMethodsMap.get(enclosingMethodDescriptor);
-    if (enclosingMethodsStack == null) {
-      enclosingMethodsStack = new Stack<>();
-      threadMethodsMap.put(enclosingMethodDescriptor, enclosingMethodsStack);
-    }
-
-    if (enclosingMethodDescriptor.equals(descriptor)) { // enclosing method start
-      final Method enclosingMethod =
-          new Method(descriptor, declaringClassName, name, arguments, returnType);
+    if (isEnclosing) {// enclosing method start
+      final Method enclosingMethod = new Method(descriptor, owner, name, arguments, returnType);
       enclosingMethod.entry = System.nanoTime();
-      enclosingMethodsStack.push(enclosingMethod);
+      threadMethodStack.addFirst(enclosingMethod);
     } else {
-      final Method enclosingMethod = enclosingMethodsStack.peek();
-      final Method subMethod =
-          new Method(descriptor, declaringClassName, name, arguments, returnType);
-      subMethod.entry = System.nanoTime();
-      enclosingMethod.add(subMethod.getDescriptor(), subMethod);
+      final Method method = new Method(descriptor, owner, name, arguments, returnType);
+      method.entry = System.nanoTime();
+      threadMethodStack.peekFirst().add(method.getDescriptor(), method);
     }
   }
 
-  public static void exit(String enclosingMethodDescriptor, String descriptor, String lineNumber) {
+  public static void exit(boolean isEnclosing, String descriptor, String lineNumber) {
 
-    final Method enclosingMethod = getEnclosingMethod(enclosingMethodDescriptor, false);
-
-    if (enclosingMethodDescriptor.equals(descriptor)) {// enclosing method stop
+    final LinkedList<Method> threadMethodStack = getThreadMethodStackOrCreate();
+    final Method enclosingMethod = threadMethodStack.peekFirst();
+    if (isEnclosing) {// enclosing method stop
       enclosingMethod.exit = System.nanoTime();
       enclosingMethod.lineNumber = lineNumber;
     } else {
-      final Method subMethod = enclosingMethod.getSubMethods().get(descriptor);
-      //noinspection ConstantConditions
+      final Method subMethod = enclosingMethod.getMethods().get(descriptor);
       subMethod.exit = System.nanoTime();
     }
   }
 
-  public static void log(String enclosingDescriptor) {
+  public static void log() {
 
-    final Method enclosingMethod = getEnclosingMethod(enclosingDescriptor, true);
+    final Method enclosingMethod = getThreadMethodStackOrCreate().pollFirst();
 
     Log.d(TAG, DrawToolbox.TOP_BORDER);
 
     Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + currentThread());
 
-    final String className = enclosingMethod.getDeclaringClassName();
+    final String className = enclosingMethod.getOwner();
     String simpleClassName = className.substring(className.lastIndexOf(".") + 1);
     final Matcher matcher = ANONYMOUS_CLASS.matcher(simpleClassName);
     if (matcher.find()) simpleClassName = matcher.replaceAll("");
@@ -98,16 +88,17 @@ public final class TimeStateLogger {
 
     Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + enclosingInfo);
 
-    if (enclosingMethod.getSubMethods().size() != 0) {
+    if (enclosingMethod.getMethods().size() != 0) {
+
       Log.d(TAG, DrawToolbox.MIDDLE_BORDER);
 
-      final Collection<Method> methods = enclosingMethod.getSubMethods().values();
+      final Collection<Method> methods = enclosingMethod.getMethods().values();
       for (Method method : methods) {
 
         final String subInfo =
             DrawToolbox.HORIZONTAL_LINE
                 + "  ____/ "
-                + method.getDeclaringClassName()
+                + method.getOwner()
                 + "#"
                 + method.getName()
                 + "("
@@ -121,17 +112,6 @@ public final class TimeStateLogger {
     }
 
     Log.d(TAG, DrawToolbox.BOTTOM_BORDER);
-  }
-
-  @SuppressWarnings("ConstantConditions")
-  private static Method getEnclosingMethod(String enclosingDescriptor, boolean isPop) {
-    final String currentThread = currentThread().toString();
-    final Map<String, Stack<Method>> threadMethodsMap = MAP.get(currentThread);
-    final Stack<Method> enclosingMethodStack = threadMethodsMap.get(enclosingDescriptor);
-    if (isPop) {
-      return enclosingMethodStack.pop();
-    }
-    return enclosingMethodStack.peek();
   }
 
   private static Thread currentThread() {
@@ -150,5 +130,14 @@ public final class TimeStateLogger {
       cost = TimeUnit.MICROSECONDS.toMillis(duration) + "μs";
     }
     return cost;
+  }
+
+  private static LinkedList<Method> getThreadMethodStackOrCreate() {
+    LinkedList<Method> currentThreadMethodStack = threadLocal.get();
+    if (currentThreadMethodStack == null) {
+      currentThreadMethodStack = new LinkedList<>();
+      threadLocal.set(currentThreadMethodStack);
+    }
+    return currentThreadMethodStack;
   }
 }

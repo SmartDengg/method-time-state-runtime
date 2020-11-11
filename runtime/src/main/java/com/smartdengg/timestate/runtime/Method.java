@@ -11,7 +11,7 @@ import java.util.Map;
 class Method {
 
   private String descriptor;
-  private String declaringClassName;
+  private String owner;
   private String name;
   private String arguments;
   private String returnType;
@@ -19,31 +19,31 @@ class Method {
   long entry;
   long exit;
 
-  private Map<String, Method> subMethods = new LinkedHashMap<>();
+  private Map<String, Method> methods = new LinkedHashMap<>();
 
-  Method(String descriptor, String declaringClassName, String name, String arguments,
+  Method(String descriptor, String owner, String name, String arguments,
       String returnType) {
     this.descriptor = descriptor;
-    this.declaringClassName = declaringClassName;
+    this.owner = owner;
     this.name = name;
     this.arguments = arguments;
     this.returnType = returnType;
   }
 
-  @SuppressWarnings("SameParameterValue") void add(String descriptor, Method method) {
-    subMethods.put(descriptor, method);
+  void add(String descriptor, Method method) {
+    this.methods.put(descriptor, method);
   }
 
-  Map<String, Method> getSubMethods() {
-    return subMethods;
+  Map<String, Method> getMethods() {
+    return methods;
   }
 
   String getDescriptor() {
     return descriptor;
   }
 
-  String getDeclaringClassName() {
-    return declaringClassName;
+  String getOwner() {
+    return owner;
   }
 
   String getName() {
