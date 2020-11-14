@@ -1,11 +1,9 @@
 package com.smartdengg.timestate.runtime;
 
 import android.util.Log;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.Stack;
+import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,8 +13,7 @@ import java.util.regex.Pattern;
  * 作者: dengwei <br>
  * 描述: 记录函数的进入和退出，并打印函数的耗时
  */
-@SuppressWarnings("ConstantConditions")
-public final class TimeStateLogger {
+@SuppressWarnings("ConstantConditions") public final class TimeStateLogger {
 
   private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
   private static final ThreadLocal<LinkedList<Method>> threadLocal = new ThreadLocal<>();
@@ -34,14 +31,15 @@ public final class TimeStateLogger {
     final String arguments = res[2];
     final String returnType = res[3];
 
-    if (isEnclosing) {// enclosing method start
+    if (isEnclosing) {// enclosing method entry
       final Method enclosingMethod = new Method(descriptor, owner, name, arguments, returnType);
       enclosingMethod.entry = System.nanoTime();
       threadMethodStack.addFirst(enclosingMethod);
     } else {
       final Method method = new Method(descriptor, owner, name, arguments, returnType);
       method.entry = System.nanoTime();
-      threadMethodStack.peekFirst().add(method.getDescriptor(), method);
+      // find enclosing method
+      threadMethodStack.peekFirst().batch(method.getDescriptor(), method);
     }
   }
 
@@ -49,12 +47,11 @@ public final class TimeStateLogger {
 
     final LinkedList<Method> threadMethodStack = getThreadMethodStackOrCreate();
     final Method enclosingMethod = threadMethodStack.peekFirst();
-    if (isEnclosing) {// enclosing method stop
+    if (isEnclosing) {// enclosing method exit
       enclosingMethod.exit = System.nanoTime();
       enclosingMethod.lineNumber = lineNumber;
     } else {
-      final Method subMethod = enclosingMethod.getMethods().get(descriptor);
-      subMethod.exit = System.nanoTime();
+      enclosingMethod.find(descriptor).exit = System.nanoTime();
     }
   }
 
@@ -84,30 +81,44 @@ public final class TimeStateLogger {
         + enclosingMethod.lineNumber
         + ")"
         + " ===> COST:"
-        + calculateTime(enclosingMethod.entry, enclosingMethod.exit);
+        + calculateTime(enclosingMethod.entry - enclosingMethod.exit);
 
     Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + enclosingInfo);
 
-    if (enclosingMethod.getMethods().size() != 0) {
+    if (enclosingMethod.hasMethods()) {
 
       Log.d(TAG, DrawToolbox.MIDDLE_BORDER);
 
-      final Collection<Method> methods = enclosingMethod.getMethods().values();
-      for (Method method : methods) {
+      for (Map.Entry<String, Queue<Method>> entry : enclosingMethod.getMethods().entrySet()) {
 
-        final String subInfo =
-            DrawToolbox.HORIZONTAL_LINE
-                + "  ____/ "
-                + method.getOwner()
-                + "#"
-                + method.getName()
-                + "("
-                + method.getArguments()
-                + "):"
-                + method.getReturnType()
-                + " ===> COST:"
-                + calculateTime(method.entry, method.exit);
-        Log.d(TAG, subInfo);
+        final Queue<Method> methods = entry.getValue();
+        final Method method = methods.poll();
+
+        long cost = method.exit - method.entry;
+        int count = 0;
+        while (!methods.isEmpty()) {
+          Method m = methods.poll();
+          cost += m.exit - m.entry;
+          count++;
+        }
+
+        String info = DrawToolbox.HORIZONTAL_LINE
+            + "  ____/ "
+            + method.getOwner()
+            + "#"
+            + method.getName()
+            + "("
+            + method.getArguments()
+            + "):"
+            + method.getReturnType();
+
+        if (count != 0) {
+          info += " *" + count;
+        }
+
+        info += " ===> COST:" + calculateTime(cost);
+
+        Log.d(TAG, info);
       }
     }
 
@@ -118,18 +129,14 @@ public final class TimeStateLogger {
     return Thread.currentThread();
   }
 
-  private static String calculateTime(long start, long stop) {
-    final long duration = stop - start;
-    String cost;
-
-    if (duration < 0) return "-1";
-
-    if (duration >= 1_000_000) {
-      cost = TimeUnit.NANOSECONDS.toMillis(duration) + "ms";
+  private static String calculateTime(long duration) {
+    if (duration <= 0) {
+      return "0ms";
+    } else if (duration >= 1_000_000) {
+      return TimeUnit.NANOSECONDS.toMillis(duration) + "ms";
     } else {
-      cost = TimeUnit.MICROSECONDS.toMillis(duration) + "μs";
+      return TimeUnit.MICROSECONDS.toMillis(duration) + "μs";
     }
-    return cost;
   }
 
   private static LinkedList<Method> getThreadMethodStackOrCreate() {
