@@ -1,9 +1,8 @@
 package com.smartdengg.timestate.runtime;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.Map;
-import java.util.Queue;
 
 /**
  * 创建时间: 2020/03/06 22:58 <br>
@@ -17,10 +16,11 @@ class Method {
   private final String name;
   private final String arguments;
   private final String returnType;
-  private final Map<String, Queue<Method>> calls = new LinkedHashMap<>(4);
+  private final Map<String, Method> internalCalls = new LinkedHashMap<>();
   String lineNumber;// only the enclose method has
   long entry;
   long exit;
+  int count = 1;
 
   Method(String descriptor, String owner, String name, String arguments, String returnType) {
     this.descriptor = descriptor;
@@ -30,22 +30,21 @@ class Method {
     this.returnType = returnType;
   }
 
-  void batch(Method method) {
-    Queue<Method> queue = calls.get(method.descriptor);
-    if (queue == null) {
-      queue = new LinkedList<>();
-      calls.put(method.descriptor, queue);
+  void batchIfNeeded(String descriptor, Method method) {
+    final Method bathedMethod = internalCalls.get(descriptor);
+    if (bathedMethod == null) {
+      internalCalls.put(descriptor, method);
+    } else {
+      bathedMethod.count++;
     }
-    queue.offer(method);
   }
 
   Method find(String descriptor) {
-    //noinspection ConstantConditions
-    return ((LinkedList<Method>) calls.get(descriptor)).peekLast();
+    return internalCalls.get(descriptor);
   }
 
-  Map<String, Queue<Method>> getCalls() {
-    return calls;
+  Map<String, Method> getInternalCalls() {
+    return internalCalls;
   }
 
   String getDescriptor() {
@@ -69,6 +68,6 @@ class Method {
   }
 
   boolean hasMethods() {
-    return calls.size() != 0;
+    return internalCalls.size() != 0;
   }
 }

@@ -1,9 +1,10 @@
 package com.smartdengg.timestate.runtime;
 
+import android.os.Build;
+import android.os.Trace;
 import android.util.Log;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -13,7 +14,7 @@ import java.util.regex.Pattern;
  * 作者: dengwei <br>
  * 描述: 记录函数的进入和退出，并打印函数的耗时
  */
-@SuppressWarnings("ConstantConditions") public final class TimeStateLogger {
+public final class TimeStateLogger {
 
   private static final Pattern ANONYMOUS_CLASS = Pattern.compile("(\\$\\d+)+$");
   private static final ThreadLocal<LinkedList<Method>> threadLocal = new ThreadLocal<>();
@@ -21,6 +22,12 @@ import java.util.regex.Pattern;
   //set by compile
   private static String TAG;
 
+  /**
+   * 函数的进入
+   *
+   * @param isEnclosing 是否为顶层函数调用
+   * @param descriptor 函数描述符，eg: com.smartdengg.timestate.sample.MainActivity/onCreate/android.os.Bundle/void
+   */
   public static void entry(boolean isEnclosing, String descriptor) {
 
     final long time = System.nanoTime();
@@ -33,18 +40,23 @@ import java.util.regex.Pattern;
     final String arguments = res[2];
     final String returnType = res[3];
 
+    final Method method = new Method(descriptor, owner, name, arguments, returnType);
+    method.entry = time;
+
     if (isEnclosing) {// enclosing method entry
-      final Method enclosingMethod = new Method(descriptor, owner, name, arguments, returnType);
-      enclosingMethod.entry = time;
-      stackTrace.addFirst(enclosingMethod);
-    } else {
-      final Method method = new Method(descriptor, owner, name, arguments, returnType);
-      method.entry = System.nanoTime();
-      // find enclosing method
-      stackTrace.peekFirst().batch(method);
+      stackTrace.addFirst(method);
+    } else {// find enclosing method
+      stackTrace.peekFirst().batchIfNeeded(descriptor, method);
     }
   }
 
+  /**
+   * 函数的退出
+   *
+   * @param isEnclosing 是否为顶层函数调用
+   * @param descriptor 函数描述符
+   * @param lineNumber 函数调用所在行号，只有顶层函数才会拥有这个值
+   */
   public static void exit(boolean isEnclosing, String descriptor, String lineNumber) {
 
     final long time = System.nanoTime();
@@ -91,18 +103,9 @@ import java.util.regex.Pattern;
 
       Log.d(TAG, DrawToolbox.MIDDLE_BORDER);
 
-      for (Map.Entry<String, Queue<Method>> entry : enclosingMethod.getCalls().entrySet()) {
+      for (Map.Entry<String, Method> entry : enclosingMethod.getInternalCalls().entrySet()) {
 
-        final Queue<Method> methods = entry.getValue();
-        final Method method = methods.poll();
-
-        long cost = method.exit - method.entry;
-        int count = 1;
-        while (!methods.isEmpty()) {
-          final Method m = methods.poll();
-          cost += m.exit - m.entry;
-          count++;
-        }
+        final Method method = entry.getValue();
 
         String info = DrawToolbox.HORIZONTAL_LINE
             + "  ____/ "
@@ -114,13 +117,11 @@ import java.util.regex.Pattern;
             + "):"
             + method.getReturnType();
 
-        if (count != 1) {
-          info += " * " + count;
+        if (method.count > 1) {
+          info += " * " + method.count;
         }
 
-        info += " ===> COST:" + calculateTime(cost);
-
-        Log.d(TAG, info);
+        Log.d(TAG, info + " ===> COST:" + calculateTime(method.exit - method.entry));
       }
     }
 
@@ -149,5 +150,17 @@ import java.util.regex.Pattern;
       threadLocal.set(currentThreadMethodStack);
     }
     return currentThreadMethodStack;
+  }
+
+  private static void beginTrace(String sectionName) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+      Trace.beginSection(sectionName);
+    }
+  }
+
+  private static void endSection() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+      Trace.endSection();
+    }
   }
 }
