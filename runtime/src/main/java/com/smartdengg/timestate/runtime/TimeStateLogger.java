@@ -1,7 +1,5 @@
 package com.smartdengg.timestate.runtime;
 
-import android.os.Build;
-import android.os.Trace;
 import android.util.Log;
 import java.util.LinkedList;
 import java.util.Map;
@@ -21,6 +19,7 @@ public final class TimeStateLogger {
 
   //set by compile
   private static String TAG;
+  private static boolean SUPPORT_EMOJI;
 
   /**
    * 函数的进入
@@ -134,12 +133,13 @@ public final class TimeStateLogger {
 
   private static String calculateTime(long duration) {
     if (duration < 0) {
-      return "-1ms \u2620";
+      return SUPPORT_EMOJI ? "-1ms \u2620" : "-1ms";
     } else if (duration >= 1_000_000) {
       long t = TimeUnit.NANOSECONDS.toMillis(duration);
-      return t >= 10 ? t + "ms \u26C4" : t + "ms \u2618";
+      return t >= 10 ? t + (SUPPORT_EMOJI ? "ms \u26C4" : "ms")
+          : t + (SUPPORT_EMOJI ? "ms \u2618" : "ms");
     } else {
-      return TimeUnit.MICROSECONDS.toMillis(duration) + "μs \u26A1";
+      return TimeUnit.MICROSECONDS.toMillis(duration) + (SUPPORT_EMOJI ? "μs \u26A1" : "μs");
     }
   }
 
@@ -150,17 +150,5 @@ public final class TimeStateLogger {
       threadLocal.set(currentThreadMethodStack);
     }
     return currentThreadMethodStack;
-  }
-
-  private static void beginTrace(String sectionName) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-      Trace.beginSection(sectionName);
-    }
-  }
-
-  private static void endSection() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-      Trace.endSection();
-    }
   }
 }
