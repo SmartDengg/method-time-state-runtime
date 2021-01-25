@@ -12,15 +12,15 @@ import java.util.Queue;
  */
 class Method {
 
+  private final String descriptor;
+  private final String owner;
+  private final String name;
+  private final String arguments;
+  private final String returnType;
+  private final Map<String, Queue<Method>> calls = new LinkedHashMap<>(4);
   String lineNumber;// only the enclose method has
   long entry;
   long exit;
-  private String descriptor;
-  private String owner;
-  private String name;
-  private String arguments;
-  private String returnType;
-  private Map<String, Queue<Method>> calls = new LinkedHashMap<>();
 
   Method(String descriptor, String owner, String name, String arguments, String returnType) {
     this.descriptor = descriptor;
@@ -30,13 +30,13 @@ class Method {
     this.returnType = returnType;
   }
 
-  void batch(String descriptor, Method method) {
-    Queue<Method> sequence = calls.get(descriptor);
-    if (sequence == null) {
-      sequence = new LinkedList<>();
-      calls.put(descriptor, sequence);
+  void batch(Method method) {
+    Queue<Method> queue = calls.get(method.descriptor);
+    if (queue == null) {
+      queue = new LinkedList<>();
+      calls.put(method.descriptor, queue);
     }
-    sequence.offer(method);
+    queue.offer(method);
   }
 
   Method find(String descriptor) {

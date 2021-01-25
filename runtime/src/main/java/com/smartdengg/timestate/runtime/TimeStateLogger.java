@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
     final long time = System.nanoTime();
 
-    final LinkedList<Method> threadMethodStack = getThreadMethodStackOrCreate();
+    final LinkedList<Method> stackTrace = getThreadStackTraceOrCreate();
 
     final String[] res = descriptor.split("/");
     final String owner = res[0];
@@ -36,12 +36,12 @@ import java.util.regex.Pattern;
     if (isEnclosing) {// enclosing method entry
       final Method enclosingMethod = new Method(descriptor, owner, name, arguments, returnType);
       enclosingMethod.entry = time;
-      threadMethodStack.addFirst(enclosingMethod);
+      stackTrace.addFirst(enclosingMethod);
     } else {
       final Method method = new Method(descriptor, owner, name, arguments, returnType);
       method.entry = System.nanoTime();
       // find enclosing method
-      threadMethodStack.peekFirst().batch(method.getDescriptor(), method);
+      stackTrace.peekFirst().batch(method);
     }
   }
 
@@ -49,13 +49,13 @@ import java.util.regex.Pattern;
 
     final long time = System.nanoTime();
 
-    final LinkedList<Method> threadMethodStack = getThreadMethodStackOrCreate();
-    final Method enclosingMethod = threadMethodStack.peekFirst();
+    final LinkedList<Method> stackTrace = getThreadStackTraceOrCreate();
+    final Method topMethod = stackTrace.peekFirst();
     if (isEnclosing) {// enclosing method exit
-      enclosingMethod.exit = time;
-      enclosingMethod.lineNumber = lineNumber;
+      topMethod.exit = time;
+      topMethod.lineNumber = lineNumber;
     } else {
-      enclosingMethod.find(descriptor).exit = time;
+      topMethod.find(descriptor).exit = time;
     }
   }
 
@@ -64,7 +64,7 @@ import java.util.regex.Pattern;
     Log.d(TAG, DrawToolbox.TOP_BORDER);
     Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + currentThread());
 
-    final Method enclosingMethod = getThreadMethodStackOrCreate().pollFirst();
+    final Method enclosingMethod = getThreadStackTraceOrCreate().pollFirst();
     final String className = enclosingMethod.getOwner();
     String simpleClassName = className.substring(className.lastIndexOf(".") + 1);
     final Matcher matcher = ANONYMOUS_CLASS.matcher(simpleClassName);
@@ -99,7 +99,7 @@ import java.util.regex.Pattern;
         long cost = method.exit - method.entry;
         int count = 1;
         while (!methods.isEmpty()) {
-          Method m = methods.poll();
+          final Method m = methods.poll();
           cost += m.exit - m.entry;
           count++;
         }
@@ -132,16 +132,17 @@ import java.util.regex.Pattern;
   }
 
   private static String calculateTime(long duration) {
-    if (duration <= 0) {
-      return "0ms";
+    if (duration < 0) {
+      return "-1ms \u2620";
     } else if (duration >= 1_000_000) {
-      return TimeUnit.NANOSECONDS.toMillis(duration) + "ms";
+      long t = TimeUnit.NANOSECONDS.toMillis(duration);
+      return t >= 10 ? t + "ms \u26C4" : t + "ms \u2618";
     } else {
-      return TimeUnit.MICROSECONDS.toMillis(duration) + "μs";
+      return TimeUnit.MICROSECONDS.toMillis(duration) + "μs \u26A1";
     }
   }
 
-  private static LinkedList<Method> getThreadMethodStackOrCreate() {
+  private static LinkedList<Method> getThreadStackTraceOrCreate() {
     LinkedList<Method> currentThreadMethodStack = threadLocal.get();
     if (currentThreadMethodStack == null) {
       currentThreadMethodStack = new LinkedList<>();
