@@ -1,6 +1,5 @@
 package com.smartdengg.timestate.runtime;
 
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -16,13 +15,17 @@ class Method {
   private final String name;
   private final String arguments;
   private final String returnType;
-  private final Map<String, Method> internalCalls = new LinkedHashMap<>();
+  private final Map<String, Method> outgoingCalls = new LinkedHashMap<>();
   String lineNumber;// only the enclose method has
-  long entry;
-  long exit;
+  long entryTimestamp;
+  long exitTimestamp;
   int count = 1;
 
-  Method(String descriptor, String owner, String name, String arguments, String returnType) {
+  public static Method create(String descriptor, String owner, String name, String arguments, String returnType) {
+    return new Method(descriptor, owner, name, arguments, returnType);
+  }
+
+  private Method(String descriptor, String owner, String name, String arguments, String returnType) {
     this.descriptor = descriptor;
     this.owner = owner;
     this.name = name;
@@ -30,28 +33,28 @@ class Method {
     this.returnType = returnType;
   }
 
-  void batchIfNeeded(String descriptor, Method method) {
-    final Method bathedMethod = internalCalls.get(descriptor);
+  void batch(String descriptor, Method method) {
+    final Method bathedMethod = outgoingCalls.get(descriptor);
     if (bathedMethod == null) {
-      internalCalls.put(descriptor, method);
+      outgoingCalls.put(descriptor, method);
     } else {
       bathedMethod.count++;
     }
   }
 
   Method find(String descriptor) {
-    return internalCalls.get(descriptor);
+    return outgoingCalls.get(descriptor);
   }
 
-  Map<String, Method> getInternalCalls() {
-    return internalCalls;
+  Map<String, Method> getOutingCalls() {
+    return outgoingCalls;
   }
 
   String getDescriptor() {
     return descriptor;
   }
 
-  String getOwner() {
+  public String getOwner() {
     return owner;
   }
 
@@ -68,6 +71,6 @@ class Method {
   }
 
   boolean hasMethods() {
-    return internalCalls.size() != 0;
+    return outgoingCalls.size() != 0;
   }
 }

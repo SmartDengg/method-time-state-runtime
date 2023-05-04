@@ -1,6 +1,8 @@
 package com.smartdengg.timestate.runtime;
 
 import android.util.Log;
+
+import java.util.Deque;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -25,27 +27,27 @@ public final class TimeStateLogger {
    * 函数的进入
    *
    * @param isEnclosing 是否为顶层函数调用
-   * @param descriptor 函数描述符，eg: com.smartdengg.timestate.sample.MainActivity/onCreate/android.os.Bundle/void
+   * @param descriptor 函数描述符，eg: onCreate/android.os.Bundle/void
    */
   public static void entry(boolean isEnclosing, String descriptor) {
 
     final long time = System.nanoTime();
 
-    final LinkedList<Method> stackTrace = getThreadStackTraceOrCreate();
+    final Deque<Method> stackTrace = getOrCreateThreadStackTrace();
 
-    final String[] res = descriptor.split("/");
-    final String owner = res[0];
-    final String name = res[1];
-    final String arguments = res[2];
-    final String returnType = res[3];
+    final String[] result = descriptor.split("/");
+    final String owner = result[0];
+    final String name = result[1];
+    final String arguments = result[2];
+    final String returnType = result[3];
 
-    final Method method = new Method(descriptor, owner, name, arguments, returnType);
-    method.entry = time;
+    final Method method = Method.create(descriptor, owner, name, arguments, returnType);
+    method.entryTimestamp = time;
 
     if (isEnclosing) {// enclosing method entry
-      stackTrace.addFirst(method);
+      stackTrace.offerFirst(method);
     } else {// find enclosing method
-      stackTrace.peekFirst().batchIfNeeded(descriptor, method);
+      stackTrace.peek().batch(descriptor, method);
     }
   }
 
@@ -58,73 +60,74 @@ public final class TimeStateLogger {
    */
   public static void exit(boolean isEnclosing, String descriptor, String lineNumber) {
 
-    final long time = System.nanoTime();
+    final long timestamp = System.nanoTime();
 
-    final LinkedList<Method> stackTrace = getThreadStackTraceOrCreate();
-    final Method topMethod = stackTrace.peekFirst();
+    final Deque<Method> stackTrace = getOrCreateThreadStackTrace();
+    final Method topMethod = stackTrace.peek();
     if (isEnclosing) {// enclosing method exit
-      topMethod.exit = time;
+      topMethod.exitTimestamp = timestamp;
       topMethod.lineNumber = lineNumber;
     } else {
-      topMethod.find(descriptor).exit = time;
+      topMethod.find(descriptor).exitTimestamp = timestamp;
     }
   }
 
-  public static void log() {
+  public static void log(String owner) {
 
-    Log.d(TAG, DrawToolbox.TOP_BORDER);
-    Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + currentThread());
+    final StringBuilder log = new StringBuilder();
+    append(log, "");
+    append(log, DrawToolbox.TOP_BORDER);
+    append(log, DrawToolbox.HORIZONTAL_LINE + " " + currentThread());
 
-    final Method enclosingMethod = getThreadStackTraceOrCreate().pollFirst();
-    final String className = enclosingMethod.getOwner();
-    String simpleClassName = className.substring(className.lastIndexOf(".") + 1);
+    final Method enclosingMethod = getOrCreateThreadStackTrace().poll();
+    String simpleClassName = owner.substring(owner.lastIndexOf(".") + 1);
     final Matcher matcher = ANONYMOUS_CLASS.matcher(simpleClassName);
     if (matcher.find()) simpleClassName = matcher.replaceAll("");
 
-    final String enclosingInfo = className
-        + "#"
-        + enclosingMethod.getName()
-        + "("
-        + enclosingMethod.getArguments()
-        + "):"
-        + enclosingMethod.getReturnType()
-        + " ("
-        + simpleClassName
-        + ".java:"
-        + enclosingMethod.lineNumber
-        + ")"
-        + " ===> COST:"
-        + calculateTime(enclosingMethod.exit - enclosingMethod.entry);
+    final String enclosingInfo = owner
+            + "#"
+            + enclosingMethod.getName()
+            + "("
+            + enclosingMethod.getArguments()
+            + "):"
+            + enclosingMethod.getReturnType()
+            + "("
+            + simpleClassName
+            + ".java:"
+            + enclosingMethod.lineNumber
+            + ")"
+            + " ===> COST:"
+            + calculateTime(enclosingMethod.exitTimestamp - enclosingMethod.entryTimestamp);
 
-    Log.d(TAG, DrawToolbox.HORIZONTAL_LINE + " " + enclosingInfo);
+    append(log, DrawToolbox.HORIZONTAL_LINE + " " + enclosingInfo);
 
     if (enclosingMethod.hasMethods()) {
 
-      Log.d(TAG, DrawToolbox.MIDDLE_BORDER);
+      append(log, DrawToolbox.MIDDLE_BORDER);
 
-      for (Map.Entry<String, Method> entry : enclosingMethod.getInternalCalls().entrySet()) {
+      for (Map.Entry<String, Method> entry : enclosingMethod.getOutingCalls().entrySet()) {
 
         final Method method = entry.getValue();
 
         String info = DrawToolbox.HORIZONTAL_LINE
-            + "  ____/ "
-            + method.getOwner()
-            + "#"
-            + method.getName()
-            + "("
-            + method.getArguments()
-            + "):"
-            + method.getReturnType();
+                + "  ____/ "
+                + method.getOwner()
+                + "#"
+                + method.getName()
+                + "("
+                + method.getArguments()
+                + "):"
+                + method.getReturnType();
 
         if (method.count > 1) {
           info += " * " + method.count;
         }
 
-        Log.d(TAG, info + " ===> COST:" + calculateTime(method.exit - method.entry));
+        append(log, info + " ===> COST:" + calculateTime(method.exitTimestamp - method.entryTimestamp));
       }
     }
-
-    Log.d(TAG, DrawToolbox.BOTTOM_BORDER);
+    append(log, DrawToolbox.BOTTOM_BORDER);
+    Log.d(TAG, log.toString());
   }
 
   private static Thread currentThread() {
@@ -137,18 +140,22 @@ public final class TimeStateLogger {
     } else if (duration >= 1_000_000) {
       long t = TimeUnit.NANOSECONDS.toMillis(duration);
       return t >= 10 ? t + (SUPPORT_EMOJI ? "ms \u26C4" : "ms")
-          : t + (SUPPORT_EMOJI ? "ms \u2618" : "ms");
+              : t + (SUPPORT_EMOJI ? "ms \u2618" : "ms");
     } else {
       return TimeUnit.MICROSECONDS.toMillis(duration) + (SUPPORT_EMOJI ? "μs \u26A1" : "μs");
     }
   }
 
-  private static LinkedList<Method> getThreadStackTraceOrCreate() {
+  private static Deque<Method> getOrCreateThreadStackTrace() {
     LinkedList<Method> currentThreadMethodStack = threadLocal.get();
     if (currentThreadMethodStack == null) {
       currentThreadMethodStack = new LinkedList<>();
       threadLocal.set(currentThreadMethodStack);
     }
     return currentThreadMethodStack;
+  }
+
+  private static StringBuilder append(StringBuilder stringBuilder, String message) {
+    return stringBuilder.append("\t\t").append(message).append("\n");
   }
 }

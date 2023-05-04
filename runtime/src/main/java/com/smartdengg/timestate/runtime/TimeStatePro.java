@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
  * 作者: dengwei <br>
  * 描述: 计算函数的全量耗时
  */
-@Retention(RetentionPolicy.CLASS)
+@Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.CONSTRUCTOR, ElementType.METHOD})
 public @interface TimeStatePro {
 }
